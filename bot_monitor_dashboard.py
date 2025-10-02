@@ -41,21 +41,110 @@ except Exception as e:
 # Initialize Binance client (READ-ONLY for balance)
 print(f"🔑 Binance API Key present: {bool(BINANCE_API_KEY)}")
 print(f"🔑 Binance API Secret present: {bool(BINANCE_API_SECRET)}")
+if BINANCE_API_KEY:
+    print(f"🔑 API Key (first 8 chars): {BINANCE_API_KEY[:8]}...")
+if BINANCE_API_SECRET:
+    print(f"🔑 API Secret (first 8 chars): {BINANCE_API_SECRET[:8]}...")
 
-try:
-    if not BINANCE_API_KEY or not BINANCE_API_SECRET:
-        raise ValueError("Binance API credentials not found in environment variables")
+# Check if using testnet
+BINANCE_TESTNET = os.getenv('BINANCE_TESTNET', 'false').lower() == 'true'
+print(f"🌐 Binance Testnet Mode: {BINANCE_TESTNET}")
 
-    binance_client = Client(BINANCE_API_KEY, BINANCE_API_SECRET)
-    # Sync time
-    import time
-    server_time = binance_client.get_server_time()
-    time_offset = server_time['serverTime'] - int(time.time() * 1000)
-    binance_client.timestamp_offset = time_offset
-    print(f"✅ Binance API connected (offset: {time_offset}ms)")
-except Exception as e:
-    print(f"❌ Binance connection failed: {type(e).__name__}: {e}")
-    binance_client = None
+def initialize_binance_client(max_retries=3):
+    """Initialize Binance client with retry logic and detailed error logging"""
+    for attempt in range(max_retries):
+        try:
+            if not BINANCE_API_KEY or not BINANCE_API_SECRET:
+                error_msg = "Binance API credentials not found in environment variables"
+                print(f"❌ {error_msg}")
+                print("⚠️  Please set BINANCE_API_KEY and BINANCE_API_SECRET in Railway environment variables")
+                return None
+
+            print(f"🔄 Initializing Binance client (attempt {attempt + 1}/{max_retries})...")
+
+            # Initialize client with testnet support
+            if BINANCE_TESTNET:
+                print("🧪 Using Binance TESTNET endpoints")
+                client = Client(BINANCE_API_KEY, BINANCE_API_SECRET, testnet=True)
+            else:
+                print("🌍 Using Binance MAINNET endpoints")
+                client = Client(BINANCE_API_KEY, BINANCE_API_SECRET)
+
+            # Sync time with retry
+            import time
+            print("⏰ Syncing server time...")
+            server_time = client.get_server_time()
+            time_offset = server_time['serverTime'] - int(time.time() * 1000)
+            client.timestamp_offset = time_offset
+            print(f"✅ Time offset synchronized: {time_offset}ms")
+
+            # Test connection by fetching account info
+            print("🔍 Testing API connection with account info request...")
+            try:
+                account_info = client.futures_account()
+                balance = float(account_info.get('totalWalletBalance', 0))
+                print(f"✅ Binance API connected successfully!")
+                print(f"💰 Account Balance: ${balance:.2f} USDT")
+                print(f"📊 Can Place Orders: {account_info.get('canTrade', False)}")
+                print(f"🔐 API Permissions: Trade={account_info.get('canTrade')}, Withdraw={account_info.get('canWithdraw')}")
+                return client
+            except Exception as test_error:
+                print(f"⚠️  Connection test failed: {type(test_error).__name__}: {test_error}")
+
+                # Check for common error patterns
+                error_str = str(test_error).lower()
+                if 'timestamp' in error_str:
+                    print("❌ ERROR: Timestamp synchronization issue detected")
+                    print("🔧 Possible fix: Server time might be out of sync")
+                elif 'signature' in error_str or 'invalid' in error_str:
+                    print("❌ ERROR: API signature validation failed")
+                    print("🔧 Possible fix: Check if API Key and Secret are correct")
+                    print("🔧 Verify API keys are for the correct environment (testnet vs mainnet)")
+                elif 'permission' in error_str or 'forbidden' in error_str:
+                    print("❌ ERROR: API permission denied")
+                    print("🔧 Possible fix: Enable Futures trading permission in Binance API settings")
+                elif 'ip' in error_str:
+                    print("❌ ERROR: IP address not whitelisted")
+                    print("🔧 Possible fix: Add Railway's IP to API whitelist or remove IP restrictions")
+                elif 'rate' in error_str or 'limit' in error_str:
+                    print("❌ ERROR: Rate limit exceeded")
+                    print("🔧 Waiting before retry...")
+                    time.sleep(2 ** attempt)  # Exponential backoff
+                else:
+                    print(f"❌ ERROR: Unknown error - {test_error}")
+                    print(f"🔍 Full error details: {repr(test_error)}")
+
+                # If not last attempt, retry
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt
+                    print(f"⏳ Retrying in {wait_time} seconds...")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    print(f"❌ All {max_retries} connection attempts failed")
+                    return None
+
+        except Exception as e:
+            print(f"❌ Binance client initialization failed (attempt {attempt + 1}/{max_retries})")
+            print(f"❌ Error Type: {type(e).__name__}")
+            print(f"❌ Error Message: {e}")
+            import traceback
+            print(f"❌ Stack Trace:")
+            traceback.print_exc()
+
+            if attempt < max_retries - 1:
+                import time
+                wait_time = 2 ** attempt
+                print(f"⏳ Retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+            else:
+                print(f"❌ All {max_retries} initialization attempts failed")
+                return None
+
+    return None
+
+# Initialize Binance client with retry logic
+binance_client = initialize_binance_client()
 
 # Initialize Dash app
 app = dash.Dash(__name__, title="Self-Optimizer Bot Monitor")
@@ -868,6 +957,27 @@ def create_supervisor_actions_table(supervisor_actions):
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 8050))
-    print(f"🚀 Starting Self-Optimizer Bot Monitor on port {port}")
+    print(f"\n{'='*60}")
+    print(f"🚀 Starting Self-Optimizer Bot Monitor")
+    print(f"{'='*60}")
+    print(f"📊 Port: {port}")
     print(f"📊 Dashboard URL: http://0.0.0.0:{port}")
+    print(f"🔗 Redis: {'✅ Connected' if redis_connected else '❌ Disconnected'}")
+    print(f"🔗 Binance: {'✅ Connected' if binance_client else '❌ Disconnected'}")
+
+    if not binance_client:
+        print(f"\n⚠️  WARNING: Binance API not connected!")
+        print(f"⚠️  Dashboard will show 'NO API CONNECTION' status")
+        print(f"⚠️  Please check Railway environment variables:")
+        print(f"   - BINANCE_API_KEY")
+        print(f"   - BINANCE_API_SECRET")
+        print(f"   - BINANCE_TESTNET (optional, set to 'true' for testnet)")
+        print(f"\n📝 Common issues:")
+        print(f"   1. API keys not set in Railway environment")
+        print(f"   2. API keys are for wrong environment (testnet vs mainnet)")
+        print(f"   3. API permissions not enabled (enable Futures trading)")
+        print(f"   4. IP whitelist restrictions (disable or add Railway IP)")
+
+    print(f"{'='*60}\n")
+
     app.run_server(debug=False, host='0.0.0.0', port=port)
