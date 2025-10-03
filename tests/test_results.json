@@ -1,0 +1,72 @@
+{
+  "timestamp": "2025-10-03T06:15:06.600927",
+  "url": "https://dashboard-production-5a5d.up.railway.app",
+  "summary": {
+    "passed": 0,
+    "failed": 7,
+    "total": 7
+  },
+  "results": {
+    "Issue 1": {
+      "passed": false,
+      "details": {
+        "Bot Status": {
+          "status": "FAIL",
+          "content": "Empty"
+        },
+        "Balance": {
+          "status": "FAIL",
+          "content": "Empty"
+        },
+        "Active Trades": {
+          "status": "FAIL",
+          "content": "Empty"
+        },
+        "Optimization Cycle": {
+          "status": "FAIL",
+          "content": "Empty"
+        },
+        "Redis Status": {
+          "status": "FAIL",
+          "content": "Empty"
+        }
+      }
+    },
+    "Issue 2": {
+      "passed": false,
+      "details": {
+        "message": "Element not found"
+      }
+    },
+    "Issue 3": {
+      "passed": false,
+      "details": {
+        "message": "Element not found"
+      }
+    },
+    "Issue 4": {
+      "passed": false,
+      "details": {
+        "message": "Element not found"
+      }
+    },
+    "Issue 5": {
+      "passed": false,
+      "details": {
+        "message": "Element not found"
+      }
+    },
+    "Issue 6": {
+      "passed": false,
+      "details": {
+        "message": "Empty container"
+      }
+    },
+    "Issue 7": {
+      "passed": false,
+      "details": {
+        "message": "Empty container"
+      }
+    }
+  }
+}

@@ -1,0 +1,48 @@
+Testing callback: https://dashboard-production-5a5d.up.railway.app/_dash-update-component
+Payload: {
+  "output": "..bot-status.children...balance-display.children...active-trades.children...optimization-cycle.children...supervisor-status.children...balance-chart.figure...optimization-params-chart.figure...baseline-comparison.figure...supervisor-actions.figure...recent-trades-table.children...closed-trades-table.children...bot-activity-log.children...supervisor-detailed-status.children...supervisor-alerts-table.children...supervisor-actions-table.children..",
+  "outputs": [
+    {
+      "id": "...
+
+Status Code: 200
+Headers: {'Content-Length': '119945', 'Content-Type': 'application/json', 'Date': 'Fri, 03 Oct 2025 12:16:51 GMT', 'Server': 'railway-edge', 'X-Railway-Edge': 'railway/us-east4-eqdc4a', 'X-Railway-Request-Id': 'wCVuu_J5RQ-vmxWkwoOzXw'}
+
+✅ SUCCESS - Response:
+{
+  "multi": true,
+  "response": {
+    "bot-status": {
+      "children": "\ud83d\udfe1 MONITORING"
+    },
+    "balance-display": {
+      "children": "$247.65 USDT"
+    },
+    "active-trades": {
+      "children": "1148 positions"
+    },
+    "optimization-cycle": {
+      "children": "Cycle #27"
+    },
+    "supervisor-status": {
+      "children": "\u26a0\ufe0f 627 alerts in last hour. Overfitting ..."
+    },
+    "balance-chart": {
+      "figure": {
+        "data": [
+          {
+            "line": {
+              "color": "#3498db",
+              "width": 2
+            },
+            "mode": "lines+markers",
+            "name": "Balance",
+            "x": [
+              "2025-10-03T11:32:26.719420",
+              "2025-10-03T10:13:08.449139",
+              "2025-10-03T08:52:29.778174",
+              "2025-10-03T07:31:50.250661",
+              "2025-10-03T06:13:02.278138",
+              "2025-10-03T04:54:08.097695",
+              "2025-10-03T03:34:36.172963",
+              "2025-10-03T02:

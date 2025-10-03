@@ -201,15 +201,11 @@ app.layout = html.Div([
             ], style={'width': '50%', 'display': 'inline-block'})
         ]),
 
-        # Charts Row 2
+        # Charts Row 2 - Removed baseline comparison, made supervisor actions full width
         html.Div([
             html.Div([
-                dcc.Graph(id="baseline-comparison")
-            ], style={'width': '50%', 'display': 'inline-block'}),
-
-            html.Div([
                 dcc.Graph(id="supervisor-actions")
-            ], style={'width': '50%', 'display': 'inline-block'})
+            ], style={'width': '100%', 'display': 'inline-block'})
         ]),
 
         # Recent Trades Section
@@ -227,13 +223,20 @@ app.layout = html.Div([
 
         # Supervisor Detailed Status
         html.Div([
-            html.H3("🤖 Supervisor Detailed Status", style={'color': '#2c3e50', 'marginTop': '20px'}),
+            html.Div([
+                html.H3("🤖 Supervisor Detailed Status", style={'color': '#2c3e50', 'marginTop': '20px', 'display': 'inline-block'}),
+                html.Button("📥 Download Supervisor Report", id="download-supervisor-btn",
+                           style={'float': 'right', 'marginTop': '20px', 'padding': '10px 20px',
+                                 'backgroundColor': '#3498db', 'color': 'white', 'border': 'none',
+                                 'borderRadius': '5px', 'cursor': 'pointer'})
+            ], style={'width': '100%'}),
             html.Div(id="supervisor-detailed-status", style={
                 'padding': '15px',
                 'backgroundColor': '#f8f9fa',
                 'borderRadius': '10px',
                 'marginBottom': '20px'
-            })
+            }),
+            dcc.Download(id="download-supervisor-report")
         ]),
 
         # Supervisor Alerts and Actions
@@ -325,7 +328,6 @@ def get_balance_from_binance():
      Output('supervisor-status', 'children'),
      Output('balance-chart', 'figure'),
      Output('optimization-params-chart', 'figure'),
-     Output('baseline-comparison', 'figure'),
      Output('supervisor-actions', 'figure'),
      Output('recent-trades-table', 'children'),
      Output('closed-trades-table', 'children'),
@@ -394,7 +396,6 @@ def update_dashboard(n):
             "🔴 Redis offline - showing live data only",
             create_empty_chart("Balance Over Time", "Bot data not in Redis yet"),
             create_empty_chart("Optimization Parameters", "Bot data not in Redis yet"),
-            create_empty_chart("Baseline vs Current", "Bot data not in Redis yet"),
             create_empty_chart("Supervisor Actions", "Bot data not in Redis yet"),
             recent_trades_table,
             closed_trades_table,
@@ -435,12 +436,6 @@ def update_dashboard(n):
         # Optimization parameters chart
         params_fig = create_optimization_params_chart(bot_data.get('adaptive_params', {}))
 
-        # Baseline vs Current comparison
-        comparison_fig = create_baseline_comparison(
-            bot_data.get('baseline_performance', {}),
-            bot_data.get('current_performance', {})
-        )
-
         # Supervisor actions chart
         supervisor_fig = create_supervisor_actions_chart(bot_data.get('activity_log', []))
 
@@ -461,7 +456,7 @@ def update_dashboard(n):
         supervisor_actions_table_view = create_supervisor_actions_table(bot_data.get('supervisor_actions', []))
 
         return (bot_status, balance_display, active_trades, optimization_cycle, supervisor_status,
-                balance_fig, params_fig, comparison_fig, supervisor_fig,
+                balance_fig, params_fig, supervisor_fig,
                 recent_trades_table, closed_trades_table, activity_log,
                 supervisor_detailed, supervisor_alerts_table, supervisor_actions_table_view)
     except Exception as e:
@@ -477,7 +472,6 @@ def update_dashboard(n):
             "Error loading data",
             create_empty_chart("Balance Over Time", "Error loading data"),
             create_empty_chart("Optimization Parameters", "Error loading data"),
-            create_empty_chart("Baseline vs Current", "Error loading data"),
             create_empty_chart("Supervisor Actions", "Error loading data"),
             html.Div("Error loading trades", style={'textAlign': 'center', 'color': '#e74c3c'}),
             html.Div("Error loading trades", style={'textAlign': 'center', 'color': '#e74c3c'}),
@@ -532,57 +526,46 @@ def create_optimization_params_chart(adaptive_params):
     if not adaptive_params:
         return create_empty_chart("Optimization Parameters", "No parameters yet")
 
-    params_df = pd.DataFrame([
-        {'param': k, 'value': v}
-        for k, v in adaptive_params.items()
-        if isinstance(v, (int, float))
-    ])
+    # Separate numeric and non-numeric params
+    numeric_params = []
+    non_numeric_params = []
 
-    if params_df.empty:
+    for k, v in adaptive_params.items():
+        if isinstance(v, (int, float)):
+            numeric_params.append({'param': k, 'value': v})
+        else:
+            non_numeric_params.append({'param': k, 'value': str(v)})
+
+    if not numeric_params:
         return create_empty_chart("Optimization Parameters", "No numeric parameters")
+
+    # Create bar chart for numeric parameters
+    params_df = pd.DataFrame(numeric_params)
 
     fig = px.bar(
         params_df,
         x='param',
         y='value',
-        title="Current Optimization Parameters",
+        title=f"Optimization Parameters ({len(adaptive_params)} total)",
         color='value',
         color_continuous_scale='viridis'
     )
-    fig.update_layout(template="plotly_white", height=250)
-    return fig
 
-def create_baseline_comparison(baseline, current):
-    """Create baseline vs current performance comparison"""
-    if not baseline or not current:
-        return create_empty_chart("Baseline vs Current Performance", "No comparison data yet")
-
-    metrics = list(set(list(baseline.keys()) + list(current.keys())))
-    comparison_data = []
-
-    for metric in metrics:
-        if metric in baseline and metric in current:
-            comparison_data.append({
-                'metric': metric,
-                'baseline': baseline[metric],
-                'current': current[metric],
-                'improvement': ((current[metric] - baseline[metric]) / baseline[metric] * 100) if baseline[metric] != 0 else 0
-            })
-
-    if not comparison_data:
-        return create_empty_chart("Baseline vs Current Performance", "No metrics available")
-
-    df = pd.DataFrame(comparison_data)
-
-    fig = go.Figure()
-    fig.add_trace(go.Bar(name='Baseline', x=df['metric'], y=df['baseline'], marker_color='#95a5a6'))
-    fig.add_trace(go.Bar(name='Current', x=df['metric'], y=df['current'], marker_color='#3498db'))
+    # Add annotation showing all parameters
+    all_params_text = "<br>".join([f"{k}: {v}" for k, v in adaptive_params.items()])
 
     fig.update_layout(
-        title="Baseline vs Current Performance",
-        barmode='group',
         template="plotly_white",
-        height=250
+        height=250,
+        annotations=[{
+            'text': f'Total: {len(adaptive_params)} parameters',
+            'xref': 'paper',
+            'yref': 'paper',
+            'x': 0.5,
+            'y': 1.15,
+            'showarrow': False,
+            'font': {'size': 10, 'color': '#7f8c8d'}
+        }]
     )
     return fig
 
@@ -894,6 +877,45 @@ def create_supervisor_alerts_table(supervisor_alerts):
     ], style={'width': '100%', 'border': '1px solid #ddd'})
 
     return table
+
+@app.callback(
+    Output('download-supervisor-report', 'data'),
+    [Input('download-supervisor-btn', 'n_clicks')],
+    prevent_initial_call=True
+)
+def download_supervisor_report(n_clicks):
+    """Generate and download supervisor report as JSON"""
+    if not n_clicks:
+        return None
+
+    try:
+        bot_data = get_bot_data_from_redis()
+        if not bot_data:
+            return None
+
+        report = {
+            'timestamp': datetime.now().isoformat(),
+            'supervisor_status': {
+                'advice': bot_data.get('supervisor_advice'),
+                'last_update': bot_data.get('supervisor_last_update'),
+            },
+            'supervisor_alerts': bot_data.get('supervisor_alerts', []),
+            'supervisor_actions': bot_data.get('supervisor_actions', []),
+            'bot_performance': {
+                'baseline': bot_data.get('baseline_performance', {}),
+                'current': bot_data.get('current_performance', {}),
+            },
+            'optimization_params': bot_data.get('adaptive_params', {}),
+            'activity_log': bot_data.get('activity_log', [])[:50]  # Last 50 activities
+        }
+
+        return dict(
+            content=json.dumps(report, indent=2),
+            filename=f"supervisor_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        )
+    except Exception as e:
+        print(f"Error generating supervisor report: {e}")
+        return None
 
 def create_supervisor_actions_table(supervisor_actions):
     """Create table showing supervisor actions"""
