@@ -52,11 +52,16 @@ class SelfOptimizingTradingBot:
 
         # Redis client for dashboard integration
         redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
+        self.redis_client = None
         try:
-            self.redis_client = redis.from_url(redis_url, decode_responses=True)
-            logger.info(f"Redis client initialized: {redis_url}")
+            logger.info(f"🔄 Attempting Redis connection to: {redis_url}")
+            self.redis_client = redis.from_url(redis_url, decode_responses=True, socket_connect_timeout=5)
+            # Test connection
+            self.redis_client.ping()
+            logger.info(f"✅ Redis client connected successfully: {redis_url}")
         except Exception as e:
-            logger.warning(f"Redis initialization failed: {e}. Dashboard integration disabled.")
+            logger.error(f"❌ Redis initialization failed: {e}. Dashboard integration disabled.")
+            logger.error(f"   Redis URL was: {redis_url}")
             self.redis_client = None
 
         # Self-optimization data
@@ -504,18 +509,30 @@ class SelfOptimizingTradingBot:
     def publish_adaptive_params_to_redis(self):
         """Publish adaptive parameters to Redis for dashboard display"""
         if not self.redis_client:
+            logger.warning("⚠️ Redis client not available, skipping parameter publish")
             return
 
         try:
             # Publish all 6 adaptive parameters to Redis
-            self.redis_client.set('bot:adaptive_params', json.dumps(self.adaptive_params))
+            params_json = json.dumps(self.adaptive_params)
+            self.redis_client.set('bot:adaptive_params', params_json)
 
             # Update timestamp for stale data detection
-            self.redis_client.set('bot:last_update', datetime.now().isoformat())
+            timestamp = datetime.now().isoformat()
+            self.redis_client.set('bot:last_update', timestamp)
 
-            logger.info(f"Published adaptive parameters to Redis: {self.adaptive_params}")
+            logger.info(f"📤 Published adaptive parameters to Redis:")
+            logger.info(f"   momentum_threshold: {self.adaptive_params['momentum_threshold']}")
+            logger.info(f"   confidence_multiplier: {self.adaptive_params['confidence_multiplier']}")
+            logger.info(f"   volume_weight: {self.adaptive_params['volume_weight']}")
+            logger.info(f"   short_ma_weight: {self.adaptive_params['short_ma_weight']}")
+            logger.info(f"   med_ma_weight: {self.adaptive_params['med_ma_weight']}")
+            logger.info(f"   min_confidence_threshold: {self.adaptive_params['min_confidence_threshold']}")
+            logger.info(f"   Timestamp: {timestamp}")
         except Exception as e:
-            logger.warning(f"Failed to publish adaptive parameters to Redis: {e}")
+            logger.error(f"❌ Failed to publish adaptive parameters to Redis: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
 
     async def start_trading(self):
         """Start the self-optimizing trading loop"""
