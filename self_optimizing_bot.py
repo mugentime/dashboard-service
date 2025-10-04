@@ -368,6 +368,10 @@ class SelfOptimizingTradingBot:
                     }
 
                 self.pair_performance[symbol]['trades'] += 1
+
+                # Publish to Redis after every successful trade
+                self.publish_adaptive_params_to_redis()
+
                 return True
             else:
                 trade_record['status'] = 'FAILED'
@@ -521,6 +525,11 @@ class SelfOptimizingTradingBot:
             timestamp = datetime.now().isoformat()
             self.redis_client.set('bot:last_update', timestamp)
 
+            # Publish bot status
+            self.redis_client.set('bot:status', 'RUNNING')
+            self.redis_client.set('bot:trade_count', str(self.trade_count))
+            self.redis_client.set('bot:heartbeat', timestamp)
+
             logger.info(f"📤 Published adaptive parameters to Redis:")
             logger.info(f"   momentum_threshold: {self.adaptive_params['momentum_threshold']}")
             logger.info(f"   confidence_multiplier: {self.adaptive_params['confidence_multiplier']}")
@@ -576,6 +585,10 @@ class SelfOptimizingTradingBot:
                 # Performance check every 10 cycles
                 if cycle_count % 10 == 0:
                     await self.performance_check()
+
+                # Publish heartbeat to Redis every cycle
+                self.publish_adaptive_params_to_redis()
+                logger.info(f"📤 Heartbeat update (cycle {cycle_count})")
 
                 logger.info(f"Adaptive cycle {cycle_count} completed")
                 await asyncio.sleep(60)
