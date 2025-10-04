@@ -152,9 +152,19 @@ app = dash.Dash(__name__, title="Self-Optimizer Bot Monitor")
 # App layout
 app.layout = html.Div([
     html.Div([
-        html.H1("🤖 Self-Optimizer Bot Monitor",
-                style={'textAlign': 'center', 'color': '#2c3e50', 'marginBottom': '10px'}),
-        html.P("Read-only monitoring dashboard [v2.0 - Live Binance Data]",
+        html.H1("🎯 5% Profit Goal Tracker",
+                style={'textAlign': 'center', 'color': '#2c3e50', 'marginBottom': '5px'}),
+
+        # HERO METRIC - Profit Goal Progress
+        html.Div(id="hero-profit-goal", style={
+            'textAlign': 'center',
+            'fontSize': '48px',
+            'fontWeight': 'bold',
+            'color': '#27ae60',
+            'marginBottom': '10px'
+        }),
+
+        html.P("Real-time monitoring of self-optimizing trading bot",
                style={'textAlign': 'center', 'color': '#7f8c8d', 'marginBottom': '20px'}),
 
         # Status Row
@@ -303,6 +313,7 @@ def get_bot_data_from_redis():
             'last_update': last_update,
             'data_freshness': data_freshness,
             'adaptive_params': json.loads(redis_client.get('bot:adaptive_params') or '{}'),
+            'goal_progress': json.loads(redis_client.get('bot:goal_progress') or '{}'),
             'supervisor_advice': redis_client.get('bot:supervisor_advice'),
             'supervisor_last_update': redis_client.get('bot:supervisor_last_update'),
             'baseline_performance': json.loads(redis_client.get('bot:baseline_performance') or '{}'),
@@ -343,7 +354,8 @@ def get_balance_from_binance():
         return 0.0
 
 @app.callback(
-    [Output('bot-status', 'children'),
+    [Output('hero-profit-goal', 'children'),
+     Output('bot-status', 'children'),
      Output('balance-display', 'children'),
      Output('active-trades', 'children'),
      Output('optimization-cycle', 'children'),
@@ -415,7 +427,11 @@ def update_dashboard(n):
             print(f"❌ Error creating closed trades table: {e}")
             closed_trades_table = html.Div("Error loading trades", style={'textAlign': 'center', 'color': '#e74c3c'})
 
+        # Hero metric fallback
+        hero_metric = "Waiting for bot data..."
+
         return (
+            hero_metric,
             bot_status,
             f"${balance:.2f} USDT",
             f"{open_positions_count} positions",
@@ -447,6 +463,38 @@ def update_dashboard(n):
 
         active_trades = f"{bot_data.get('active_trades', 0)} positions"
         optimization_cycle = f"Cycle #{bot_data.get('optimization_cycle', 0)}"
+
+        # HERO METRIC: Goal Progress
+        goal_progress = bot_data.get('goal_progress', {})
+        if goal_progress:
+            current_profit_pct = goal_progress.get('current_profit_pct', 0)
+            profit_goal = goal_progress.get('profit_goal', 5.0)
+            profit_velocity = goal_progress.get('profit_velocity_per_hour', 0)
+
+            # Calculate color based on progress
+            progress_ratio = current_profit_pct / profit_goal if profit_goal > 0 else 0
+            if current_profit_pct >= profit_goal:
+                color = '#27ae60'  # Green - goal achieved
+                icon = '🎉'
+            elif current_profit_pct > 0:
+                color = '#27ae60' if progress_ratio > 0.5 else '#f39c12'  # Green if >50%, orange otherwise
+                icon = '📈'
+            elif current_profit_pct < 0:
+                color = '#e74c3c'  # Red - losing money
+                icon = '📉'
+            else:
+                color = '#95a5a6'  # Grey - neutral
+                icon = '⏸️'
+
+            hero_metric = html.Div([
+                html.Span(f"{icon} {current_profit_pct:+.2f}% ", style={'color': color}),
+                html.Span(f"/ {profit_goal}%", style={'color': '#7f8c8d', 'fontSize': '32px'}),
+                html.Br(),
+                html.Span(f"Velocity: {profit_velocity:+.3f}% per hour",
+                         style={'fontSize': '18px', 'color': '#7f8c8d'})
+            ])
+        else:
+            hero_metric = "Loading goal data..."
 
         supervisor_advice = bot_data.get('supervisor_advice') or "No advice"
         # Make status more informative - show if Redis is connected
@@ -487,7 +535,7 @@ def update_dashboard(n):
         # Supervisor actions table
         supervisor_actions_table_view = create_supervisor_actions_table(bot_data.get('supervisor_actions', []))
 
-        return (bot_status, balance_display, active_trades, optimization_cycle, supervisor_status,
+        return (hero_metric, bot_status, balance_display, active_trades, optimization_cycle, supervisor_status,
                 balance_fig, params_fig, supervisor_fig,
                 recent_trades_table, closed_trades_table, activity_log,
                 supervisor_detailed, supervisor_alerts_table, supervisor_actions_table_view)
@@ -497,6 +545,7 @@ def update_dashboard(n):
         traceback.print_exc()
         # Return fallback data
         return (
+            "⚠️ Error loading goal data",
             "🔴 ERROR",
             "$0.00 USDT",
             "0 positions",

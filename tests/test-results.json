@@ -1,0 +1,90 @@
+{
+  "timestamp": "2025-10-03T18:00:02.185Z",
+  "url": "https://dashboard-production-5a5d.up.railway.app/",
+  "tests": [
+    {
+      "name": "Navigation",
+      "status": "PASS",
+      "details": "Page loaded successfully"
+    },
+    {
+      "name": "Page Title",
+      "status": "INFO",
+      "details": "Updating..."
+    },
+    {
+      "name": "Section Heading",
+      "status": "FAIL",
+      "details": "Section heading not found"
+    },
+    {
+      "name": "Parameters Display",
+      "status": "PARTIAL",
+      "details": "Found 0/6 parameters",
+      "foundParams": [],
+      "missingParams": [
+        "momentum_threshold",
+        "confidence_multiplier",
+        "volume_weight",
+        "short_ma_weight",
+        "med_ma_weight",
+        "min_confidence_threshold"
+      ],
+      "parameterValues": {}
+    },
+    {
+      "name": "Chart Rendering",
+      "status": "PASS",
+      "details": {
+        "canvasCount": 0,
+        "svgCount": 0,
+        "graphElements": 3
+      }
+    },
+    {
+      "name": "Redis Status",
+      "status": "UNKNOWN",
+      "details": "No clear Redis status indicator found"
+    },
+    {
+      "name": "Update Timestamp",
+      "status": "FAIL",
+      "details": "No timestamp found"
+    },
+    {
+      "name": "Error Messages",
+      "status": "PASS",
+      "details": "No visible errors"
+    },
+    {
+      "name": "Page Structure",
+      "status": "INFO",
+      "details": {
+        "headings": [
+          "h1: 🤖 Self-Optimizer Bot Monitor",
+          "h3: Bot Status",
+          "h3: Balance",
+          "h3: Active Trades",
+          "h3: Optimization Cycle",
+          "h3: Redis Status",
+          "h3: Recent Open Trades",
+          "h3: Recently Closed Trades",
+          "h3: 🤖 Supervisor Detailed Status",
+          "h3: ⚠️ Supervisor Alerts",
+          "h3: 📋 Supervisor Actions",
+          "h3: Recent Bot Activity"
+        ],
+        "tables": 0,
+        "inputs": 0,
+        "buttons": 1,
+        "divs": 38
+      }
+    }
+  ],
+  "screenshots": [
+    "C:\\Users\\je2al\\Desktop\\apis and traidis\\dashboard-service\\tests\\screenshot-full-page.png",
+    "C:\\Users\\je2al\\Desktop\\apis and traidis\\dashboard-service\\tests\\screenshot-optimization-section.png"
+  ],
+  "consoleErrors": [],
+  "networkErrors": []
+}

@@ -1,0 +1,16 @@
+🤖 Self-Optimizer Bot Monitor
+
+Read-only monitoring dashboard [v2.0 - Live Binance Data]
+
+Bot Status
+Balance
+Active Trades
+Optimization Cycle
+Redis Status
+Recent Open Trades
+Recently Closed Trades
+🤖 Supervisor Detailed Status
+📥 Download Supervisor Report
+⚠️ Supervisor Alerts
+📋 Supervisor Actions
+Recent Bot Activity

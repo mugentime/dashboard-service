@@ -88,6 +88,11 @@ class SelfOptimizingTradingBot:
             'max_drawdown': 0.0
         }
 
+        # Goal tracking - PRIMARY OBJECTIVE: 5% profit
+        self.profit_goal = 5.0  # Target: 5% profit
+        self.goal_start_time = datetime.now()
+        self.goal_start_balance = 0.0
+
         # Multi-timeframe and volatility analysis
         self.multi_timeframe_analyzer = MultiTimeframeAnalyzer()
         self.volatility_calculator = VolatilityCalculator()
@@ -106,7 +111,12 @@ class SelfOptimizingTradingBot:
             self.account_balance = float(account_info.get('totalWalletBalance', 0))
             self.initial_balance = self.account_balance
 
+            # Set goal tracking baseline
+            self.goal_start_balance = self.account_balance
+            self.goal_start_time = datetime.now()
+
             logger.info(f"Account verified - Balance: {self.account_balance} USDT")
+            logger.info(f"🎯 PROFIT GOAL: {self.profit_goal}% (Target: ${self.account_balance * (1 + self.profit_goal/100):.2f} USDT)")
 
             # Load previous optimization data if exists
             await self.load_optimization_data()
@@ -383,13 +393,18 @@ class SelfOptimizingTradingBot:
             return False
 
     async def optimize_parameters(self):
-        """Self-optimize parameters based on recent performance"""
+        """Self-optimize parameters based on profit velocity toward 5% goal"""
         try:
-            logger.info("STARTING PARAMETER OPTIMIZATION...")
+            logger.info("STARTING GOAL-ORIENTED OPTIMIZATION...")
 
             if len(self.trade_history) < 10:
                 logger.info("Not enough trade history for optimization")
                 return
+
+            # Calculate current profit progress
+            current_profit_pct = ((self.account_balance - self.goal_start_balance) / self.goal_start_balance * 100) if self.goal_start_balance > 0 else 0
+            time_elapsed_hours = (datetime.now() - self.goal_start_time).total_seconds() / 3600
+            profit_velocity = current_profit_pct / time_elapsed_hours if time_elapsed_hours > 0 else 0
 
             # Analyze recent trades (last 50 trades)
             recent_trades = self.trade_history[-50:]
@@ -409,17 +424,24 @@ class SelfOptimizingTradingBot:
 
             win_rate = len(profitable_trades) / len(recent_trades) if recent_trades else 0.5
 
-            logger.info(f"Recent performance: {win_rate:.2%} win rate from {len(recent_trades)} trades")
+            logger.info(f"🎯 GOAL STATUS: {current_profit_pct:+.3f}% / {self.profit_goal}%")
+            logger.info(f"📈 Profit Velocity: {profit_velocity:+.4f}% per hour")
+            logger.info(f"📊 Recent Win Rate: {win_rate:.2%} from {len(recent_trades)} trades")
 
-            # Optimize momentum threshold
-            if win_rate < 0.4:  # Poor performance - be more selective
-                self.adaptive_params['momentum_threshold'] *= 1.1  # Increase threshold
-                self.adaptive_params['min_confidence_threshold'] *= 1.05
-                logger.info("Performance poor - increasing selectivity")
-            elif win_rate > 0.65:  # Good performance - be more aggressive
-                self.adaptive_params['momentum_threshold'] *= 0.95  # Decrease threshold
-                self.adaptive_params['min_confidence_threshold'] *= 0.98
-                logger.info("Performance good - increasing aggressiveness")
+            # GOAL-ORIENTED OPTIMIZATION: Prioritize profit velocity over win rate
+            # If profit velocity is too slow, be MORE aggressive
+            if profit_velocity < 0.05:  # Less than 0.05% per hour is too slow
+                self.adaptive_params['momentum_threshold'] *= 0.92  # LOWER threshold = more trades
+                self.adaptive_params['min_confidence_threshold'] *= 0.95  # LOWER bar = more aggressive
+                logger.info("⚡ Profit velocity TOO SLOW - increasing trading frequency")
+            elif profit_velocity < 0:  # Losing money
+                self.adaptive_params['momentum_threshold'] *= 1.15  # HIGHER threshold = more selective
+                self.adaptive_params['min_confidence_threshold'] *= 1.08  # HIGHER bar = more defensive
+                logger.info("🛑 NEGATIVE profit - becoming more selective")
+            elif profit_velocity > 0.15:  # Excellent velocity (>0.15% per hour)
+                # Keep current strategy, it's working
+                self.adaptive_params['momentum_threshold'] *= 0.98  # Slightly more aggressive
+                logger.info("🚀 EXCELLENT profit velocity - maintaining aggressive stance")
 
             # Optimize confidence multiplier
             avg_confidence_of_winners = statistics.mean([t['confidence'] for t in profitable_trades]) if profitable_trades else 0.5
@@ -530,14 +552,30 @@ class SelfOptimizingTradingBot:
             self.redis_client.set('bot:trade_count', str(self.trade_count))
             self.redis_client.set('bot:heartbeat', timestamp)
 
-            logger.info(f"📤 Published adaptive parameters to Redis:")
-            logger.info(f"   momentum_threshold: {self.adaptive_params['momentum_threshold']}")
-            logger.info(f"   confidence_multiplier: {self.adaptive_params['confidence_multiplier']}")
-            logger.info(f"   volume_weight: {self.adaptive_params['volume_weight']}")
-            logger.info(f"   short_ma_weight: {self.adaptive_params['short_ma_weight']}")
-            logger.info(f"   med_ma_weight: {self.adaptive_params['med_ma_weight']}")
-            logger.info(f"   min_confidence_threshold: {self.adaptive_params['min_confidence_threshold']}")
-            logger.info(f"   Timestamp: {timestamp}")
+            # Publish goal progress metrics
+            current_profit_pct = ((self.account_balance - self.goal_start_balance) / self.goal_start_balance * 100) if self.goal_start_balance > 0 else 0
+            time_elapsed = (datetime.now() - self.goal_start_time).total_seconds() / 3600  # hours
+            profit_velocity = current_profit_pct / time_elapsed if time_elapsed > 0 else 0
+
+            goal_metrics = {
+                'profit_goal': self.profit_goal,
+                'current_profit_pct': current_profit_pct,
+                'goal_start_balance': self.goal_start_balance,
+                'current_balance': self.account_balance,
+                'profit_velocity_per_hour': profit_velocity,
+                'time_elapsed_hours': time_elapsed,
+                'goal_achieved': current_profit_pct >= self.profit_goal
+            }
+            self.redis_client.set('bot:goal_progress', json.dumps(goal_metrics))
+
+            logger.info(f"📤 Published to Redis:")
+            logger.info(f"   🎯 GOAL PROGRESS: {current_profit_pct:+.3f}% / {self.profit_goal}%")
+            logger.info(f"   💰 Balance: ${self.account_balance:.2f} (Start: ${self.goal_start_balance:.2f})")
+            logger.info(f"   📈 Velocity: {profit_velocity:+.4f}% per hour")
+            logger.info(f"   ⚙️  momentum_threshold: {self.adaptive_params['momentum_threshold']}")
+            logger.info(f"   ⚙️  confidence_multiplier: {self.adaptive_params['confidence_multiplier']}")
+            logger.info(f"   ⚙️  min_confidence_threshold: {self.adaptive_params['min_confidence_threshold']}")
+            logger.info(f"   🕐 Timestamp: {timestamp}")
         except Exception as e:
             logger.error(f"❌ Failed to publish adaptive parameters to Redis: {e}")
             import traceback
