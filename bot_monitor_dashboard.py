@@ -388,53 +388,11 @@ def update_dashboard(n):
         bot_data = None
 
     if not bot_data:
-        # Redis not available - fallback to Binance data
-        try:
-            balance = get_balance_from_binance()
-        except Exception as e:
-            print(f"❌ Error fetching balance: {e}")
-            balance = 0.0
-
-        # Check if bot is active by looking at recent trades - GET REAL COUNT FROM BINANCE
-        try:
-            if not binance_client:
-                print("❌ No Binance client - API credentials missing")
-                bot_status = "🔴 NO API CONNECTION"
-                open_positions_count = 0
-            else:
-                # Add timeout to prevent blocking
-                import signal
-
-                def timeout_handler(signum, frame):
-                    raise TimeoutError("Binance API call timed out")
-
-                # Set 3 second timeout for Binance call
-                if hasattr(signal, 'SIGALRM'):  # Unix-like systems
-                    signal.signal(signal.SIGALRM, timeout_handler)
-                    signal.alarm(3)
-                    try:
-                        positions = binance_client.futures_position_information()
-                        signal.alarm(0)  # Cancel alarm
-                    except TimeoutError:
-                        print("⚠️ Binance API timeout, using fallback")
-                        positions = []
-                else:  # Windows - just try with no timeout
-                    try:
-                        positions = binance_client.futures_position_information()
-                    except:
-                        print("⚠️ Binance API failed, using fallback")
-                        positions = []
-
-                # Count only non-zero positions
-                open_positions_count = len([p for p in positions if abs(float(p['positionAmt'])) > 0])
-                bot_status = f"🟢 ACTIVE - {open_positions_count} positions" if open_positions_count > 0 else "🟡 MONITORING"
-                print(f"✅ Found {open_positions_count} open positions (real-time from Binance)")
-        except Exception as e:
-            print(f"❌ Error checking positions: {e}")
-            import traceback
-            traceback.print_exc()
-            bot_status = "🟡 STATUS UNKNOWN"
-            open_positions_count = 0
+        # Redis not available - SKIP BINANCE CALLS ENTIRELY TO PREVENT HANGING
+        print("⚠️ No Redis data - using safe defaults (skipping Binance API)")
+        balance = 0.0
+        bot_status = "📊 Live Mode - Direct Binance data"
+        open_positions_count = 0
 
         try:
             recent_trades_table = create_recent_trades_table()
