@@ -1036,6 +1036,33 @@ def create_supervisor_actions_table(supervisor_actions):
 
     return table
 
+# Add health check endpoint
+@app.server.route('/health')
+def health_check():
+    """Health check endpoint for debugging"""
+    import json
+    status = {
+        'redis_connected': redis_connected,
+        'redis_client': redis_client is not None,
+        'binance_client': binance_client is not None,
+        'timestamp': datetime.now().isoformat()
+    }
+
+    # Try to get Redis data
+    try:
+        if redis_client and redis_connected:
+            adaptive_params = redis_client.get('bot:adaptive_params')
+            last_update = redis_client.get('bot:last_update')
+            status['redis_data'] = {
+                'adaptive_params': adaptive_params,
+                'last_update': last_update,
+                'has_params': bool(adaptive_params)
+            }
+    except Exception as e:
+        status['redis_error'] = str(e)
+
+    return json.dumps(status, indent=2), 200, {'Content-Type': 'application/json'}
+
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 8050))
     print(f"\n{'='*60}")
