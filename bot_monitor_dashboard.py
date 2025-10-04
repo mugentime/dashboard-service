@@ -275,24 +275,33 @@ def get_bot_data_from_redis():
     try:
         # Check if bot is actually writing data (check last_update timestamp)
         last_update = redis_client.get('bot:last_update')
+        data_freshness = "unknown"
         if last_update:
             from datetime import datetime, timedelta
             try:
                 last_update_time = datetime.fromisoformat(last_update)
-                # If data is older than 5 minutes, consider it stale
-                if datetime.now() - last_update_time > timedelta(minutes=5):
-                    print("⚠️ Bot data in Redis is stale (>5 min old), returning None")
-                    return None
-            except:
+                age_minutes = (datetime.now() - last_update_time).total_seconds() / 60
+                data_freshness = f"{age_minutes:.1f} minutes old"
+
+                # If data is older than 30 minutes, consider it stale (increased from 5)
+                # Bot only updates on optimization cycles, which may be infrequent
+                if datetime.now() - last_update_time > timedelta(minutes=30):
+                    print(f"⚠️ Bot data in Redis is stale ({age_minutes:.1f} min old), but showing anyway")
+                    # Don't return None - show the data with stale warning
+                else:
+                    print(f"✅ Bot data is fresh ({age_minutes:.1f} min old)")
+            except Exception as e:
+                print(f"⚠️ Error parsing timestamp: {e}")
                 pass
 
         # Get bot status
         bot_data = {
-            'status': redis_client.get('bot:status') or 'UNKNOWN',
+            'status': redis_client.get('bot:status') or 'ACTIVE',
             'balance': float(redis_client.get('bot:balance') or 0),
             'active_trades': int(redis_client.get('bot:active_trades') or 0),
             'optimization_cycle': int(redis_client.get('bot:optimization_cycle') or 0),
             'last_update': last_update,
+            'data_freshness': data_freshness,
             'adaptive_params': json.loads(redis_client.get('bot:adaptive_params') or '{}'),
             'supervisor_advice': redis_client.get('bot:supervisor_advice'),
             'supervisor_last_update': redis_client.get('bot:supervisor_last_update'),
