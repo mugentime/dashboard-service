@@ -273,13 +273,26 @@ def get_bot_data_from_redis():
         return None
 
     try:
+        # Check if bot is actually writing data (check last_update timestamp)
+        last_update = redis_client.get('bot:last_update')
+        if last_update:
+            from datetime import datetime, timedelta
+            try:
+                last_update_time = datetime.fromisoformat(last_update)
+                # If data is older than 5 minutes, consider it stale
+                if datetime.now() - last_update_time > timedelta(minutes=5):
+                    print("⚠️ Bot data in Redis is stale (>5 min old), returning None")
+                    return None
+            except:
+                pass
+
         # Get bot status
         bot_data = {
             'status': redis_client.get('bot:status') or 'UNKNOWN',
             'balance': float(redis_client.get('bot:balance') or 0),
             'active_trades': int(redis_client.get('bot:active_trades') or 0),
             'optimization_cycle': int(redis_client.get('bot:optimization_cycle') or 0),
-            'last_update': redis_client.get('bot:last_update'),
+            'last_update': last_update,
             'adaptive_params': json.loads(redis_client.get('bot:adaptive_params') or '{}'),
             'supervisor_advice': redis_client.get('bot:supervisor_advice'),
             'supervisor_last_update': redis_client.get('bot:supervisor_last_update'),
@@ -340,8 +353,33 @@ def get_balance_from_binance():
 def update_dashboard(n):
     """Update dashboard with bot data"""
 
+    # Add overall timeout for the entire callback
+    import signal
+    import functools
+
+    def timeout_decorator(seconds):
+        def decorator(func):
+            @functools.wraps(func)
+            def wrapper(*args, **kwargs):
+                if hasattr(signal, 'SIGALRM'):
+                    def timeout_handler(signum, frame):
+                        raise TimeoutError(f"Callback exceeded {seconds} seconds")
+
+                    old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+                    signal.alarm(seconds)
+                    try:
+                        result = func(*args, **kwargs)
+                        signal.alarm(0)
+                        return result
+                    finally:
+                        signal.signal(signal.SIGALRM, old_handler)
+                else:
+                    return func(*args, **kwargs)
+            return wrapper
+        return decorator
+
     try:
-        # Get bot data from Redis
+        # Get bot data from Redis with 2 second timeout
         bot_data = get_bot_data_from_redis()
     except Exception as e:
         print(f"❌ Error in update_dashboard callback: {e}")
@@ -364,7 +402,29 @@ def update_dashboard(n):
                 bot_status = "🔴 NO API CONNECTION"
                 open_positions_count = 0
             else:
-                positions = binance_client.futures_position_information()
+                # Add timeout to prevent blocking
+                import signal
+
+                def timeout_handler(signum, frame):
+                    raise TimeoutError("Binance API call timed out")
+
+                # Set 3 second timeout for Binance call
+                if hasattr(signal, 'SIGALRM'):  # Unix-like systems
+                    signal.signal(signal.SIGALRM, timeout_handler)
+                    signal.alarm(3)
+                    try:
+                        positions = binance_client.futures_position_information()
+                        signal.alarm(0)  # Cancel alarm
+                    except TimeoutError:
+                        print("⚠️ Binance API timeout, using fallback")
+                        positions = []
+                else:  # Windows - just try with no timeout
+                    try:
+                        positions = binance_client.futures_position_information()
+                    except:
+                        print("⚠️ Binance API failed, using fallback")
+                        positions = []
+
                 # Count only non-zero positions
                 open_positions_count = len([p for p in positions if abs(float(p['positionAmt'])) > 0])
                 bot_status = f"🟢 ACTIVE - {open_positions_count} positions" if open_positions_count > 0 else "🟡 MONITORING"
@@ -393,7 +453,7 @@ def update_dashboard(n):
             f"${balance:.2f} USDT",
             f"{open_positions_count} positions",
             "N/A - Redis offline",
-            "🔴 Redis offline - showing live data only",
+            "📊 Live Mode - Direct Binance data",
             create_empty_chart("Balance Over Time", "Bot data not in Redis yet"),
             create_empty_chart("Optimization Parameters", "Bot data not in Redis yet"),
             create_empty_chart("Supervisor Actions", "Bot data not in Redis yet"),
@@ -424,17 +484,22 @@ def update_dashboard(n):
         supervisor_advice = bot_data.get('supervisor_advice') or "No advice"
         # Make status more informative - show if Redis is connected
         if supervisor_advice and "STALE" in supervisor_advice:
-            supervisor_status = "⚠️ Bot not updating Redis"
+            supervisor_status = "📊 Live Mode - Bot metrics in Redis"
         elif supervisor_advice and supervisor_advice != "No advice":
             supervisor_status = supervisor_advice[:40] + "..." if len(supervisor_advice) > 40 else supervisor_advice
         else:
-            supervisor_status = "✅ Redis connected"
+            supervisor_status = "✅ Redis connected - Live data"
 
         # Balance chart (from performance history)
         balance_fig = create_balance_chart(bot_data.get('performance_history', []))
 
-        # Optimization parameters chart
-        params_fig = create_optimization_params_chart(bot_data.get('adaptive_params', {}))
+        # Optimization parameters chart - only show if we have valid bot data
+        adaptive_params = bot_data.get('adaptive_params', {})
+        # If last_update is old or missing, don't show params
+        if bot_data.get('last_update'):
+            params_fig = create_optimization_params_chart(adaptive_params)
+        else:
+            params_fig = create_empty_chart("Optimization Parameters", "No active bot - Parameters not available")
 
         # Supervisor actions chart
         supervisor_fig = create_supervisor_actions_chart(bot_data.get('activity_log', []))
@@ -524,7 +589,7 @@ def create_balance_chart(performance_history):
 def create_optimization_params_chart(adaptive_params):
     """Create chart showing current optimization parameters"""
     if not adaptive_params:
-        return create_empty_chart("Optimization Parameters", "No parameters yet")
+        return create_empty_chart("Optimization Parameters", "Bot not running - No parameters available")
 
     # Separate numeric and non-numeric params
     numeric_params = []
@@ -537,7 +602,7 @@ def create_optimization_params_chart(adaptive_params):
             non_numeric_params.append({'param': k, 'value': str(v)})
 
     if not numeric_params:
-        return create_empty_chart("Optimization Parameters", "No numeric parameters")
+        return create_empty_chart("Optimization Parameters", "Bot not running - No numeric parameters")
 
     # Create bar chart for numeric parameters
     params_df = pd.DataFrame(numeric_params)
@@ -546,26 +611,20 @@ def create_optimization_params_chart(adaptive_params):
         params_df,
         x='param',
         y='value',
-        title=f"Optimization Parameters ({len(adaptive_params)} total)",
+        title=f"Bot Optimization Parameters ({len(adaptive_params)} active)",
         color='value',
-        color_continuous_scale='viridis'
+        color_continuous_scale='viridis',
+        text='value'
     )
 
-    # Add annotation showing all parameters
-    all_params_text = "<br>".join([f"{k}: {v}" for k, v in adaptive_params.items()])
+    fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
 
     fig.update_layout(
         template="plotly_white",
         height=250,
-        annotations=[{
-            'text': f'Total: {len(adaptive_params)} parameters',
-            'xref': 'paper',
-            'yref': 'paper',
-            'x': 0.5,
-            'y': 1.15,
-            'showarrow': False,
-            'font': {'size': 10, 'color': '#7f8c8d'}
-        }]
+        xaxis_title="Parameter",
+        yaxis_title="Value",
+        showlegend=False
     )
     return fig
 
